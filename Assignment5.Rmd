@@ -1,0 +1,286 @@
+---
+title: "Data Mining Assignment"
+author: "Weijie Gao"
+date: "2 Feb 2017"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r}
+dataPath <- "~/Documents/Chicago2016/Winter/Data Mining/week2"
+GermanCredit <- read.table(paste(dataPath,"Germancredit_numertic.csv",sep='/'),header=TRUE)
+
+# represent the good credit as 1, and bad as 0.
+GermanCredit$Class <-ifelse(GermanCredit$Class==1,1,0)
+
+# include only numeric independent variables 1,3 through 9 as predictors
+GermanCredit <- GermanCredit[,c(5,2,8,11,13,16,18)]
+head(GermanCredit)
+
+# seperate the data into training and test set
+set.seed(234)
+smp_size <- floor(0.7 * nrow(GermanCredit))
+train_ind <- sample(nrow(GermanCredit), size = smp_size)
+GermanCredit.train.cw <- GermanCredit[train_ind, ]
+GermanCredit.test.cw <- GermanCredit[-train_ind, ]
+
+source(file.path(dataPath,"clustereg.predict.R"))
+source(file.path(dataPath,"clustreg.R"))
+
+clustreg.credit.1 <- clustreg(GermanCredit.train.cw,1,1,1234,1)
+clustreg.credit.1$results
+table((clustreg.credit.1$cluster))
+round(prop.table(table(clustreg.credit.1$cluster)),3)
+
+clustreg.credit.2 <- clustreg(GermanCredit.train.cw,2,30,1234,15)
+clustreg.credit.2$results
+table((clustreg.credit.2$cluster))
+round(prop.table(table(clustreg.credit.2$cluster)),3)
+
+clustreg.credit.3 <- clustreg(GermanCredit.train.cw,3,30,1234,15)
+clustreg.credit.3$results
+table((clustreg.credit.3$cluster))
+round(prop.table(table(clustreg.credit.3$cluster)),3)
+
+plot(c(1,2,3),c(clustreg.credit.1$rsq.best,clustreg.credit.2$rsq.best,clustreg.credit.3$rsq.best),ylim=c(0,1),type="l",main="R square Plot",xlab="Number of Clusters",ylab="R square")
+```
+
+#### The above graph shows that the rsq.best is highest when we group the data into 3 clusters. In this case, cluster 2 and cluster 3 account for the majority of the data, 31.9% and 60.7%, respectively, and cluster 1 only account for 7.4%. From the result of this model clustreg.credit.3, it indicates that in cluster 1 the coefficients of Duration, Num_maintenance are significant, and in cluster 2 and cluster 3 the coefficients of Duration, Installment_rate, Num_existingcredit and Num_maintenance are significant. For the model clustreg.credit.2, its overall R square is slightly lower than the 3 cluster model, with cluster 1 equals to 0.7311, and cluster 2 equals to 0.6961. And in cluster 1, all coefficients except for Present_residence are significant, and for cluster 2, only Duration, Installment_rate and age are significant. And in this case, cluster 1 account for 19.4% of the training samples and cluster 2 account for 80.6% of the training data.
+
+```{r}
+# perform holdout validation
+predict.credit.1 <- clustreg.predict(clustreg.credit.1,newdat=GermanCredit.test.cw)
+predict.credit.1$rsq
+round(prop.table(table(predict.credit.1$cluster)),3)
+
+clustreg.credit.1$results$cluster
+predict.credit.2 <- clustreg.predict(clustreg.credit.2,newdat=GermanCredit.test.cw)
+predict.credit.2$rsq
+table((predict.credit.2$cluster))
+round(prop.table(table(predict.credit.2$cluster)),3)
+
+predict.credit.3 <-clustreg.predict(clustreg.credit.3,newdat=GermanCredit.test.cw)
+predict.credit.3$rsq
+table((predict.credit.3$cluster))
+round(prop.table(table(predict.credit.3$cluster)),3)
+```
+
+#### In this part, the best r squre for the first model increased to 0.5727463, and for the second and third model, both r square drop a little bit, but they are still good, with 0.8290967 and 0.8893376 respectively. Therefore, in general, the third model has the best performance. And the size of clusters is relatively stable in model 3, cluster 2 and cluster 3 still account for the majority of the data, 30.7% and 63.7%, respectively, and cluster 1 accounts for 5.7%. Hence, we may choose model 3 in this case, that is we seperate the data into 3 clusters and build the corresponding glm model respectively.
+
+### Part 2
+
+#### Discriminant Analysis
+```{r}
+dataPath <- "~/Documents/Chicago2016/Winter/Data Mining/week2"
+GermanCredit <- read.table(paste(dataPath,"Germancredit_numertic.csv",sep='/'),header=TRUE)
+
+# represent the good credit as 1, and bad as 0.
+GermanCredit$Class <-ifelse(GermanCredit$Class==1,1,0)
+
+# seperate the data into training and test set
+set.seed(234)
+smp_size <- floor(0.7 * nrow(GermanCredit))
+train_ind <- sample(nrow(GermanCredit), size = smp_size)
+GermanCredit.train <- GermanCredit[train_ind, ]
+GermanCredit.test <- GermanCredit[-train_ind, ]
+
+library(caret)
+library(MASS)
+# Linear Discriminant Analysis
+LDA <- lda(GermanCredit.train$Class~., data=GermanCredit.train,CV=FALSE)
+
+# generate confusion matrix for training data
+predict_lda_train <- predict(LDA)$class
+confusionMatrix(GermanCredit.train$Class,predict_lda_train)
+
+# perform holdout validation test for lda
+predict_lda <- predict(LDA,newdata=GermanCredit.test)$class
+confusionMatrix(GermanCredit.test$Class,predict_lda)
+
+# Quadratic Discriminant Analysis
+QDA <- qda(GermanCredit.train$Class~., data=GermanCredit.train,CV=FALSE)
+
+# generate confusion matrix for training data
+predict_qda_train <- predict(QDA)$class
+confusionMatrix(GermanCredit.train$Class,predict_qda_train)
+
+# perform holdout validation test for qda
+predict_qda <- predict(QDA,newdata=GermanCredit.test)$class
+confusionMatrix(GermanCredit.test$Class,predict_qda)
+```
+
+### Logistic regression
+```{r}
+set.seed(123)
+# perform Add1 to select important features
+full.model <- glm(GermanCredit.train$Class~.,family=binomial(link='logit'),data=GermanCredit.train)
+full.model.aic <- full.model$aic
+
+null.model <- glm(GermanCredit.train$Class~1,family=binomial(link='logit'),data=GermanCredit.train)
+null.model.aic <- null.model$aic
+
+# perform forward selection
+forwards <- step(null.model,trace=0,scope=list(lower=formula(null.model),upper=formula(full.model)),direction="forward")
+step.forwards.aic <- forwards$aic
+
+# perform backward elimination on the same data set 
+# backwards <- step(full.model, data=GermanCredit.train, direction="backward")
+# step.backwards.aic <- backwards$aic
+
+best_model <- forwards 
+summary(best_model)
+best_model$aic
+
+# generate confusion matrix for training data
+predict_logistic_train <- ifelse(predict(best_model,type="response")>0.5,1,0)
+confusionMatrix(GermanCredit.train$Class,predict_logistic_train)
+
+# generate confusion matrix for test data
+predict_logistic <- ifelse(predict(best_model,newdata=GermanCredit.test,type="response")>0.5,1,0)
+# fitted_values <- ifelse(best_model$fitted.values>0.5,'Good','Bad')
+# GermanCredit.train$Class <- ifelse(GermanCredit.train$Class==1,'Good','Bad')
+confusionMatrix(GermanCredit.test$Class,predict_logistic)
+```
+
+### Decision tree
+```{r}
+library(rpart)
+library(rpart.plot)
+GermanCredit.train$Class <- as.factor(GermanCredit.train$Class)
+GermanCredit.test$Class <- as.factor(GermanCredit.test$Class)
+
+set.seed(235)
+Credit_tree <- rpart(GermanCredit.train$Class~.,data=GermanCredit.train,control=rpart.control(cp=0,minsplit=30,xval=10, maxsurrogate=0))
+
+set.seed(345)
+printcp(Credit_tree)
+num<- which.min(Credit_tree$cptable[,4])
+min_cp<- Credit_tree$cptable[num,1]
+minimum_xerror <- Credit_tree$cptable[num,4]
+cbind(num=num,min_cp=min_cp,minimum_xerror = minimum_xerror)
+
+set.seed(125)
+tree_model<-rpart(GermanCredit.train$Class~.,data=GermanCredit.train,control=rpart.control(cp=min_cp,minsplit=30,maxsurrogate=0))
+# generate confusion matrix for training data
+predict_tree_train <- predict(tree_model,type="class")
+confusionMatrix(GermanCredit.train$Class,predict_tree_train)
+
+# generate confusion matrix for test data
+predict_tree <- predict(tree_model,newdata=GermanCredit.test,type="class")
+confusionMatrix(GermanCredit.test$Class,predict_tree)
+```
+
+### Ensemble model
+```{r}
+set.seed(120)
+Ensemble_model <- function(results){
+  
+ensemble <- rep(NA,nrow(results))
+for (i in 1:nrow(results)){
+count_1 <- as.numeric(table(results[i,])[names(table(results[i,]))==1])
+count_0 <- as.numeric(table(results[i,])[names(table(results[i,]))==0])
+if (length(count_1)==0){
+  count_1 <- 0
+}else if(length(count_0)==0){
+  count_0 <-0
+ }
+if (count_1 > count_0) {
+  ensemble[i] <- 1
+}else if(count_1 < count_0){
+   ensemble[i] <- 0
+}
+else {
+  ensemble[i] <- sample(c(0,1),replace=TRUE,size=1)
+   }
+ }
+return(ensemble)
+}
+
+# predict observations in training using ensemble model
+predict.results.train <- data.frame(
+# LDA
+predict_lda=predict_lda_train,
+# QDA
+predict_qda=predict_qda_train,
+# Logistic regression
+predict_logistic=predict_logistic_train,
+# Decision tree
+predict_tree=predict_tree_train
+)
+
+predict.results.train <- as.matrix(predict.results.train)
+head(predict.results.train)
+
+
+predict.ensemble.train <- Ensemble_model(predict.results.train)
+confusionMatrix(GermanCredit.train$Class,predict.ensemble.train)
+```
+
+```{r}
+set.seed(120)
+# predict observations in test using ensemble model
+predict.results.test <- data.frame(
+# LDA
+predict_lda=predict_lda,
+# QDA
+predict_qda=predict_qda,
+# Logistic regression
+predict_logistic=predict_logistic,
+# Decision tree
+predict_tree=predict_tree
+)
+
+predict.results.test <- as.matrix(predict.results.test)
+head(predict.results.test)
+
+
+predict.ensemble.test <- Ensemble_model(predict.results.test)
+confusionMatrix(GermanCredit.test$Class,predict.ensemble.test)
+
+```
+
+#### From the resluts of previous three models, we could see that the Quadratic Discriminant Analysis has the best performance with the overall accuracy equal to 0.8086 for trianing data, and 0.6846 for test data. In the ensemble model the overall accuracy for training data is 0.7943, which is slightly worse than the Quadratic Discriminant Analysis. But the overall accuracy for test data is 0.7567, slightly better than the Quadratic Discriminant model. To choose the model with the best prediction of "bad", we refer to the result of sensitivity, Among the previous three models, logistic regression has the best performance to predict "bad", with the sensitivity value equal to 0.6944 for training set and 0.5385 for test set. And in ensemble model the sensitivity value for training and test samples are 0.7026 and 0.5263 respectively. Therefore, the ensemble model does not have a significant better performance as we expected, and to improve this model we may further consider replace the worst performance model such as decision tree with better model such as logistic regression.
+
+
+```{r}
+# predict observations in training using ensemble model
+predict.results.train <- data.frame(
+# QDA
+predict_lda=predict_qda_train,
+# QDA
+predict_qda=predict_qda_train,
+# Logistic regression
+predict_logistic=predict_logistic_train,
+# Logistic regression
+predict_logistic=predict_logistic_train
+)
+
+predict.results.train.enhance <- as.matrix(predict.results.train)
+
+predict.ensemble.train.enhance <- Ensemble_model(predict.results.train.enhance)
+confusionMatrix(GermanCredit.train$Class,predict.ensemble.train.enhance)
+
+set.seed(120)
+# predict observations in test using ensemble model
+predict.results.test <- data.frame(
+# QDA
+predict_lda=predict_qda,
+# QDA
+predict_qda=predict_qda,
+# Logistic regression
+predict_logistic=predict_logistic,
+# Logistic regression
+predict_tree=predict_logistic
+)
+
+predict.results.test <- as.matrix(predict.results.test)
+head(predict.results.test)
+
+
+predict.ensemble.test <- Ensemble_model(predict.results.test)
+confusionMatrix(GermanCredit.test$Class,predict.ensemble.test)
+```
+
+#### After replacing the Linear Discriminant Analysis with Quadratic Discriminant Analysis, and decision tree with logistic regression, the accuracy and sensitivity of ensemble model has increased to 0.8014 and 0.7019 respectively for training samples, and the accuracy for test samples increased to 0.7467, but the sensitivity is still low, with only 0.5065.
