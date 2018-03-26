@@ -1,0 +1,899 @@
+---
+title: "Project"
+author: "Weijie Gao"
+date: "26 January 2017"
+output: html_document
+---
+
+```{r}
+dataPath <- "~/Documents/Chicago2016/Spring/Data Mining/Project/winequality"
+red.wine <- read.csv2(paste(dataPath, "winequality-red.csv",sep="/"),header=TRUE)
+white.wine <- read.csv2(paste(dataPath, "winequality-white.csv",sep="/"),header=TRUE)
+
+# add another column called Category, and identify red wine as 1 and white wine as 0
+red.wine <- cbind(red.wine,Category=rep(1,nrow(red.wine)))
+white.wine <- cbind(white.wine,Category=rep(0,nrow(white.wine)))
+
+# check the class of each variable 
+# sapply(red.wine,class)
+# sapply(white.wine,class)
+
+# according to the above results, we need to transform the class of variables for further analysis
+# red wine data
+for(i in 1:11){
+  red.wine[,i]<-as.numeric(levels(red.wine[,i])[red.wine[,i]])
+}
+for(i in 12:13){
+  red.wine[,i] <- as.factor(red.wine[,i])
+}
+# white wine data
+for(i in 1:11){
+  white.wine[,i]<-as.numeric(levels(white.wine[,i])[white.wine[,i]])
+}
+for(i in 12:13){
+  white.wine[,i] <- as.factor(white.wine[,i])
+}
+
+# after transformation, check the class again
+# sapply(red.wine,class)
+# sapply(white.wine,class)
+
+# histogram for red wine
+par(mfrow=c(4,3),mar=c(2,2.5,2,0.5))
+for (i in 1:11){
+  hist(red.wine[,i],main = colnames(red.wine)[i],freq=FALSE,col="pink")
+}
+
+# histogram for white wine
+par(mfrow=c(4,3),mar=c(2,2.5,2,0.5))
+for (i in 1:11){
+  hist(white.wine[,i],main = colnames(white.wine)[i],freq=FALSE,col="lightyellow")
+}
+```
+
+```{r}
+# combine the data of red wine and white wine together
+union_wine <- rbind(red.wine,white.wine)
+table(union_wine$Category)
+
+# five-number summary for red wine
+fivenum_table_red <- sapply(1:11, function(x) summary(union_wine[,x][union_wine$Category==1]))
+colnames(fivenum_table_red) <- names(union_wine[,1:11])
+(fivenum_table_red <- t(fivenum_table_red))
+
+# five-number summary for white wine
+fivenum_table_white <- sapply(1:11, function(x) summary(union_wine[,x][union_wine$Category==0]))
+colnames(fivenum_table_white) <- names(union_wine[,1:11])
+(fivenum_table_white <- t(fivenum_table_white))
+
+# combine the two tables 
+library(knitr)
+kable(cbind(red_wine=fivenum_table_red,white_wine=fivenum_table_white),format="markdown",caption = "Five numer summary for red wine and white wine")
+
+# apply boxplot to compare the difference between red wine and white wine
+par(mfrow=c(2,6),mar=c(2,2.5,2,0.5))
+for (i in 1:11){
+  boxplot(union_wine[,i]~union_wine[,13],main=colnames(union_wine)[i],data=union_wine)
+}
+
+# bwplot(union_wine[,1]~union_wine[,13],main=colnames(union_wine)[1],data=union_wine)
+```
+
+```{r}
+install.packages("GGally")
+library(ggplot2)
+library(GGally)
+
+# histogram for the whole data set
+par(mfrow=c(4,3),mar=c(2,2.5,2,0.5))
+for(i in 1:11){
+  hist(union_wine[,i],main = colnames(union_wine)[i],freq=FALSE);
+  lines(density(union_wine[,i]),col="red",lwd=3)
+}
+
+# Q-Q plot for the whole data set
+par(mfrow=c(4,3),mar=c(2,2.5,2,0.5))
+for(i in 1:11){
+  qqnorm(union_wine[,i],main = colnames(union_wine)[i]);
+  qqline(union_wine[,i])
+}
+
+# Transform using logrithm
+union_wine[,2]<-log(union_wine[,2])
+union_wine[,4]<-log(union_wine[,4])
+union_wine[,5]<-log(union_wine[,5])
+union_wine[,6]<-log(union_wine[,6])
+union_wine[,10]<-log(union_wine[,10])
+
+# After transformation, variables ‘volatile acidity’, ‘free sulfur’, ‘chlorides’ and ‘sulphates’ looks more normal distributed than before.
+# par(mfrow=c(2,2),mar=c(2,2.5,2,0.5))
+# for(i in c(2,5,6,10)){
+#   qqnorm(union_wine[,i],main = colnames(union_wine)[i]);
+#   qqline(union_wine[,i])
+# }
+
+# Scatterplot Matrices from the glus Package 
+library(gclus)
+library(ggplot2)
+dta <- union_wine[,1:11] # get data 
+dta.r <- abs(cor(dta)) # get correlations
+dta.col <- dmat.color(dta.r) # get colors
+# reorder variables so those with highest correlation are closest to the diagonal
+dta.o <- order.single(dta.r) 
+cpairs(dta, dta.o, panel.colors=dta.col, gap=.5,
+main="Variables Ordered and Colored by Correlation" )
+# require(GGally)
+# ggpairs(union_wine, columns= 1:13, ggplot2::aes(colour=Category))
+
+# ggplot(union_wine$density,union_wine$alcohol,ggplot2 ::aes(col=union_wine$quality))
+# qplot(union_wine$density,union_wine$alcohol,color=union_wine$quality,main="Linear kernel for red wine")
+# +sp+scale_color_manual(values=wes_palette(n=7, name="GrandBudapest"))
+
+
+# plot the density vs.alcohol scatter plot , colored by the quality of wine
+union_wine$quality=as.numeric(levels(union_wine$quality))[union_wine$quality]
+Alcohol <- union_wine$alcohol
+Density <- union_wine$density
+Quality <- union_wine$quality
+Acidity <- union_wine$volatile.acidity
+
+sp1 <- ggplot(union_wine,aes(x=Density,y=Alcohol,color=Quality),title="Density vs Alcohol correlation by quality")+geom_point()
+sp1+scale_color_gradient(low="white", high="blue")
+
+sp2 <- ggplot(union_wine,aes(x=Density,y=Acidity,color=Quality),title="Density vs Acidity correlation by quality")+geom_point()
+sp2+scale_color_gradient(low="white", high="purple")
+
+```
+
+```{r}
+# split white wine sample randomly into training and test using a 632:368 ratio
+set.seed(126)
+train_ind_white <- sample(nrow(white.wine),size=floor(0.632*nrow(white.wine)))
+train_white <- white.wine[train_ind_white,]
+test_white <- white.wine[-train_ind_white,]
+
+set.seed(126)
+train_ind_red <- sample(nrow(white.wine),size=floor(0.632*nrow(white.wine)))
+train_red <- red.wine[train_ind_red,]
+test_red <- red.wine[-train_ind_red,]
+
+# combine the training sample of red wine and white wine together
+train <- rbind(train_red,train_white)
+
+# check the number of samples for red wine and white wine
+table(train$Category)
+
+# combine the test sample of red wine and white wine together
+test <- rbind(test_red, test_white)
+
+library(kernlab)
+
+xtrain <- train[,1:11]
+ytrain <- train[,13]
+xtest <- test[,1:11]
+ytest <- test[,13]
+
+# Gaussian kernel with C classification
+train1<-matrix(0,6,4)
+cross1<-matrix(0,6,4)
+sig<-c(10^(-4),10^(-3),10^(-2),10^(-1),1,10^1)
+c<-c(0.01,0.03,0.05,0.07)
+for(i in 1:6){
+  for(j in 1:4){
+svm1<-ksvm(ytrain~.,data=xtrain,type="C-svc",kernel="rbfdot",kpar=list(sigma=sig[i]),C=c[j],cross=10);
+train1[i,j]<-error(svm1);
+cross1[i,j]<-cross(svm1)
+  }
+}
+
+colnames(cross1) <- c("C=0.01","0.03","0.05","0.07")
+rownames(cross1) <- c("sigma=1e-04","1e-03","1e-02","1e-01","1e+00","1e+01")
+cross1
+```
+
+
+```{r}
+# cross validation error is smallest when sigma = 0.01 and C = 0.07.
+svm.gaussian.c.best<-ksvm(ytrain~.,data=xtrain,type="C-svc",kernel="rbfdot",kpar=list(sigma=sig[3]),C=c[4])
+pre.svm.gaussian.c.best<-predict(svm.gaussian.c.best,xtest); 
+(tE<-table(pre.svm.gaussian.c.best,ytest))
+  
+accuracy.gaussian<-matrix(NA,100)
+precision.gaussian<-matrix(NA,100) 
+recall.gaussian<-matrix(NA,100) 
+white1 <- matrix(NA,100)
+
+t3E1<-matrix(NA,100) 
+t3E2<-matrix(NA,100)
+t3E3<-matrix(NA,100) 
+t3E4<-matrix(NA,100) 
+for(i in 1:100){
+  eli<-sample(1:length(ytest),50); 
+  xtest.sample<-xtest[-eli,]; 
+  ytest.sample<-ytest[-eli]; 
+  pre3<-predict(svm.gaussian.c.best,xtest.sample); 
+  tE<-table(pre3,ytest.sample); 
+  t3E1[i]<-tE[1];
+  t3E2[i]<-tE[2];
+  t3E3[i]<-tE[3];
+  t3E4[i]<-tE[4]; 
+  accuracy.gaussian[i]<-(tE[1]+tE[4])/(tE[1]+tE[2]+tE[3]+tE[4]); 
+  precision.gaussian[i]<-tE[1]/(tE[1]+tE[2]); 
+  recall.gaussian[i]<-tE[1]/(tE[1]+tE[3]);
+  white1[i] <- tE[4]/(tE[2]+tE[4])
+}
+
+mean.accuracy.gaussian.1<-mean(accuracy.gaussian)
+sd.accuracy.gaussian.1<-sd(accuracy.gaussian) 
+mean.precision.gaussian.1<-mean(precision.gaussian) 
+sd.precision.gaussian.1<-sd(precision.gaussian) 
+mean.recall.gaussian.1<-mean(recall.gaussian) 
+sd.recall.gaussian.1<-sd(recall.gaussian)
+mean.white.1 <- mean(white1)
+sd.white.1 <- sd(white1)
+
+table1 <- cbind(accuracy.gaussian.c=mean.accuracy.gaussian.1,precision.gaussian.c.red=mean.precision.gaussian.1,precision.gaussian.c.white=mean.white.1)
+table2 <- cbind(accuracy.gaussian.c=sd.accuracy.gaussian.1,precision.gaussian.c.red=sd.precision.gaussian.1,precision.gaussian.c.white=sd.white.1 )
+table.sum1 <- rbind(table1,table2)
+rownames(table.sum1) <- c("mean","sd")
+table.sum1
+
+```
+
+```{r}
+# Polynomial kernel with C classification
+train2<-array(0,dim=c(3,4,4,5))
+cross2<-array(0,dim=c(3,4,4,5)) 
+d<-c(2,3,4)
+sca<-c(0.01,0.1,1,10) 
+ofs<-c(0.01,0.1,1,10,100)
+c<-c(1,10,100,500)
+for(i in 1:3){
+  for(j in 1:4){
+    for(k in 1:4){
+      for(h in 1:5){
+svm2<-ksvm(ytrain~.,data=xtrain,type="C-svc",kernel="polydot",kpar=list(degree=d[i],scale=sca[k],offset=ofs[h]),C=c[j],cross=10);
+train2[i,j,k,h]<-error(svm2);
+cross2[i,j,k,h]<-cross(svm2)
+      }
+    }
+  }
+}
+cross2
+cross.error.table2 <- cross2[,,2,3]
+colnames(cross.error.table2)<- c("scale=0.01","0.1","10","100")
+rownames(cross.error.table2)<- c("degree=2","3","4")
+cross.error.table2 
+```
+
+```{r}
+# cross validation error is smallest when d=2, c=100, scale=0.01, offset=0.1
+svm.poly.best <- ksvm(ytrain~.,data=xtrain,type="C-svc",kernel="polydot",kpar=list(degree=d[1],scale=sca[1],offset=ofs[2]),C=c[3])
+
+svm.poly.predict <- predict(svm.poly.best,newdata=xtest)
+(table <- table(svm.poly.predict,ytest))
+
+# library(MLmetrics)
+# ConfusionMatrix(svm.poly.predict,ytest)
+# Accuracy(svm.poly.predict,ytest)
+# F1_Score(svm.poly.predict,ytest)
+
+accuracy.poly <- matrix(NA,100)
+precision.poly <- matrix(NA,100)
+recall.poly <- matrix(NA,100)
+white2<- matrix(NA,100)
+
+t2E1<-matrix(NA,100)
+t2E2<-matrix(NA,100)
+t2E3<-matrix(NA,100)
+t2E4<-matrix(NA,100)
+
+for(i in 1:100){
+eli <-sample(1:length(ytest),50);
+xtest.sample <-xtest[-eli,];
+ytest.sampple <-ytest[-eli];
+pre2<-predict(svm.poly.best,newdata=xtest.sample);
+tE<-table(pre2,ytest.sampple);
+t2E1[i]<-tE[1];
+t2E2[i]<-tE[2];
+t2E3[i]<-tE[3];
+t2E4[i]<-tE[4];
+accuracy.poly[i]<-(tE[1]+tE[4])/(tE[1]+tE[2]+tE[3]+tE[4]);
+precision.poly[i]<-tE[1]/(tE[1]+tE[2]);
+recall.poly[i]<-tE[1]/(tE[1]+tE[3]);
+white2[i] <- tE[4]/(tE[2]+tE[4])
+}
+
+mean.accuracy.poly.1<- mean(accuracy.poly)
+sd.accuracy.poly.1 <- sd(accuracy.poly)
+mean.precision.poly.1 <- mean(precision.poly)
+sd.precision.poly.1 <- sd(precision.poly)
+mean.recall.poly.1 <- mean(recall.poly)
+sd.recall.poly.1 <-sd(recall.poly)
+mean.white.2 <- mean(white2)
+sd.white.2 <- sd(white2)
+  
+table1 <- cbind(accuracy.poly.c=mean.accuracy.poly.1 ,precision.poly.c.red=mean.precision.poly.1,precision.poly.c.white=mean.white.2)
+table2 <- cbind(accuracy.poly.c=sd.accuracy.poly.1,precision.poly.c.red=sd.precision.poly.1,precision.poly.c.white=sd.white.2)
+table.sum2 <- rbind(table1,table2)
+rownames(table.sum2) <- c("mean","sd")
+table.sum2
+```
+
+```{r}
+# Gaussian kernel with nu classification.
+train3<-matrix(0,6,4)
+cross3<-matrix(0,6,4)
+sig<-c(10^(-4),10^(-3),10^(-2),10^(-1),1,10^1)
+n<-c(0.01,0.03,0.05,0.07)
+for(i in 1:6){
+  for(j in 1:4){
+svm3<-ksvm(ytrain~.,data=xtrain,type="nu-svc",kernel="rbfdot",kpar=list(sigma=sig[i]),nu=n[j],cross=10);
+train3[i,j]<-error(svm3);
+cross3[i,j]<-cross(svm3)
+  }
+}
+
+colnames(cross3) <- c("nu=0.01","0.03","0.05","0.07")
+rownames(cross3) <- c("sigma=1e-04","1e-03","1e-02","1e-01","1e+00","1e+01")
+cross3
+```
+
+```{r}
+# cross validation error is smallest when sigma=0.01, nu=0.03 
+svm.gaussian.nu.best<-ksvm(ytrain~.,data=xtrain,type="nu-svc",kernel="rbfdot",kpar=list(sigma=sig[3]),nu=n[2]); 
+svm.gaussian.nu.best.predict <- predict(svm.gaussian.nu.best,newdata=xtest)
+(table <- table(svm.gaussian.nu.best.predict,ytest))
+
+accuracy.gaussian2<-matrix(NA,100)
+precision.gaussian.2<-matrix(NA,100) 
+recall.gaussian.2<-matrix(NA,100) 
+white3<-matrix(NA,100) 
+
+t3E1<-matrix(NA,100) 
+t3E2<-matrix(NA,100)
+t3E3<-matrix(NA,100) 
+t3E4<-matrix(NA,100) 
+for(i in 1:100){
+  eli<-sample(1:length(ytest),50); 
+  xtest.sample<-xtest[-eli,]; 
+  ytest.sample<-ytest[-eli]; 
+  pre3<-predict(svm.gaussian.nu.best,xtest.sample); 
+  tE<-table(pre3,ytest.sample); 
+  t3E1[i]<-tE[1];
+  t3E2[i]<-tE[2];
+  t3E3[i]<-tE[3];
+  t3E4[i]<-tE[4]; 
+  accuracy.gaussian2[i]<-(tE[1]+tE[4])/(tE[1]+tE[2]+tE[3]+tE[4]); 
+  precision.gaussian.2[i]<-tE[1]/(tE[1]+tE[2]); 
+  recall.gaussian.2[i]<-tE[1]/(tE[1]+tE[3])
+  white3[i] <- tE[4]/(tE[2]+tE[4])
+}
+
+mean.accuracy.gaussian.2<-mean(accuracy.gaussian2)
+sd.accuracy.gaussian.2<-sd(accuracy.gaussian2) 
+mean.precision.gaussian.2<-mean(precision.gaussian.2) 
+sd.precision.gaussian.2<-sd(precision.gaussian.2) 
+mean.recall.gaussian.2<-mean(recall.gaussian.2) 
+sd.recall.gaussian.2<-sd(recall.gaussian.2)
+mean.white.3 <- mean(white3)
+sd.white.3 <- sd(white3)
+
+table1 <- cbind(accuracy.gaussian.nu=mean.accuracy.gaussian.2,precision.gaussian.nu.red=mean.precision.gaussian.2,precision.gaussian.nu.white=mean.white.3)
+table2 <- cbind(accuracy.gaussian.nu=sd.accuracy.gaussian.2,precision.gaussian.nu.red=sd.precision.gaussian.2,precision.gaussian.nu.white=sd.white.3)
+table.sum3 <- rbind(table1,table2)
+rownames(table.sum3) <- c("mean","sd")
+kable(table.sum3)
+```
+
+
+```{r}
+# Polynomial kernel with nu classification.
+train4<-array(0,c(3,4,4,4)) 
+cross4<-array(0,c(3,4,4,4)) 
+d<-c(2,3,4)
+sca<-c(0.01,0.1,1,10) 
+ofs<-c(0.01,0.1,1,10)
+# when nu is around 0.1, it has smallest cross error, so need to narrow down the intervel of hyperparameter
+n<-c(0.01,0.03,0.05,0.07)
+for(i in 1:3){
+  for(j in 1:4){ 
+    for(k in 1:4){
+    for(h in 1:4){
+      svm4<-ksvm(ytrain~.,data=xtrain,type="nu-svc",kernel="polydot",kpar=list(degree=d[i],scale=sca[k],offset=ofs[h]),nu=n[j],cross=10); 
+      train4[i,j,k,h]<-error(svm4);
+      cross4[i,j,k,h]<-cross(svm4)
+     }
+   }
+  }
+}
+
+table.cross <- cross4[,,3,2]
+colnames(table.cross)<- c("scale=0.01","0.1","1","10")
+rownames(table.cross)<- c("degree=2","3","4")
+
+table.cross
+```
+
+
+```{r}
+# cross validation error is smallest when d=2, scale=1, offset=1, nu=0.03 
+svm.poly.nu.best<-ksvm(ytrain~.,data=xtrain,type="nu-svc",kernel="polydot",kpar=list(degree=d[1],scale=sca[3],offset=ofs[3]),nu=n[2]); 
+
+svm.poly.nu.best.predict <- predict(svm.poly.nu.best,newdata=xtest)
+(table <- table(svm.poly.nu.best.predict,ytest))
+
+accuracy.poly.2 <- matrix(NA,100)
+precision.poly.2 <- matrix(NA,100)
+recall.poly.2 <- matrix(NA,100)
+white4<-matrix(NA,100) 
+
+t2E1<-matrix(NA,100)
+t2E2<-matrix(NA,100)
+t2E3<-matrix(NA,100)
+t2E4<-matrix(NA,100)
+
+for(i in 1:100){
+eli <-sample(1:length(ytest),50);
+xtest.sample <-xtest[-eli,];
+ytest.sampple <-ytest[-eli];
+pre2<-predict(svm.poly.nu.best,newdata=xtest.sample);
+tE<-table(pre2,ytest.sampple);
+t2E1[i]<-tE[1];
+t2E2[i]<-tE[2];
+t2E3[i]<-tE[3];
+t2E4[i]<-tE[4];
+accuracy.poly.2[i]<-(tE[1]+tE[4])/(tE[1]+tE[2]+tE[3]+tE[4]);
+precision.poly.2[i]<-tE[1]/(tE[1]+tE[2]);
+recall.poly.2[i]<-tE[1]/(tE[1]+tE[3]);
+white4[i] <- tE[4]/(tE[2]+tE[4])
+}
+
+mean.accuracy.poly.2 <- mean(accuracy.poly.2)
+sd.accuracy.poly.2 <- sd(accuracy.poly.2)
+mean.precision.poly.2 <- mean(precision.poly.2)
+sd.precision.poly.2 <- sd(precision.poly.2)
+mean.recall.poly.2 <- mean(recall.poly.2)
+sd.recall.poly.2 <-sd(recall.poly.2)
+mean.white.4 <- mean(white4)
+sd.white.4 <- sd(white4)
+
+table1 <- cbind(accuracy.poly.nu=mean.accuracy.poly.2 ,precision.poly.nu.red=mean.precision.poly.2,precision.poly.nu.white=mean.white.4 )
+table2 <- cbind(accuracy.poly.nu=sd.accuracy.poly.2,precision.poly.nu.red=sd.precision.poly.2,precision.poly.nu.white=sd.white.4)
+table.sum4 <- rbind(table1,table2)
+rownames(table.sum4) <- c("mean","sd")
+table.sum4
+```
+
+
+```{r}
+# Gaussian kernel with bound-constraint svm classification
+train5<-matrix(0,6,4) 
+cross5<-matrix(0,6,4)
+sig<-c(10^(-4),10^(-3),10^(-2),10^(-1),1,10^1)
+c<-c(0.01,0.03,0.05,0.07)
+for(i in 1:6){
+  for(j in 1:4){
+    svm5<-ksvm(ytrain~.,data=xtrain,type="C-bsvc",kernel="rbfdot",kpar=list(sigma=sig[i]),C=c[j],cross=10); 
+    train5[i,j]<-error(svm5);
+    cross5[i,j]<-cross(svm5)
+  }
+}
+
+colnames(cross5) <- c("c=0.01","0.03","0.05","0.07")
+rownames(cross5) <- c("sigma=1e-04","1e-03","1e-02","1e-01","1e+00","1e+01")
+cross5
+```
+
+```{r}
+# cross validation error is smallest when sigma=0.01, C=0.03 
+svm.gaussian.bsvc.best<-ksvm(ytrain~.,data=xtrain,type="C-bsvc", kernel="rbfdot",kpar=list(sigma=sig[3]),C=c[2]); 
+
+svm.gaussian.bsvc.best.predict <- predict(svm.gaussian.bsvc.best,newdata=xtest)
+(table <- table(svm.gaussian.bsvc.best.predict,ytest))
+
+accuracy.gaussian.3<-matrix(NA,100)
+precision.gaussian.3<-matrix(NA,100) 
+recall.gaussian.3<-matrix(NA,100) 
+white5<- matrix(NA,100)
+
+t3E1<-matrix(NA,100) 
+t3E2<-matrix(NA,100)
+t3E3<-matrix(NA,100) 
+t3E4<-matrix(NA,100) 
+for(i in 1:100){
+  eli<-sample(1:length(ytest),50); 
+  xtest.sample<-xtest[-eli,]; 
+  ytest.sample<-ytest[-eli]; 
+  pre3<-predict(svm.gaussian.bsvc.best,xtest.sample); 
+  tE<-table(pre3,ytest.sample); 
+  t3E1[i]<-tE[1];
+  t3E2[i]<-tE[2];
+  t3E3[i]<-tE[3];
+  t3E4[i]<-tE[4]; 
+  accuracy.gaussian.3[i]<-(tE[1]+tE[4])/(tE[1]+tE[2]+tE[3]+tE[4]); 
+  precision.gaussian.3[i]<-tE[1]/(tE[1]+tE[2]); 
+  recall.gaussian.3[i]<-tE[1]/(tE[1]+tE[3]);
+  white5[i] <- tE[4]/(tE[2]+tE[4])
+}
+
+mean.accuracy.gaussian.3<-mean(accuracy.gaussian.3)
+sd.accuracy.gaussian.3<-sd(accuracy.gaussian.3) 
+mean.precision.gaussian.3<-mean(precision.gaussian.3) 
+sd.precision.gaussian.3<-sd(precision.gaussian.3) 
+mean.recall.gaussian.3<-mean(recall.gaussian.3) 
+sd.recall.gaussian.3<-sd(recall.gaussian.3)
+mean.white.5 <- mean(white5)
+sd.white.5 <- sd(white5)
+
+table1 <- cbind(accuracy.gaussian.b=mean.accuracy.gaussian.3,precision.gaussian.b.red=mean.precision.gaussian.3,precision.gaussian.b.white=mean.white.5 )
+table2 <- cbind(accuracy.gaussian.b=sd.accuracy.gaussian.3,precision.gaussian.b.red=sd.precision.gaussian.3,precision.gaussian.b.white=sd.white.5)
+table.sum5 <- rbind(table1,table2)
+rownames(table.sum5) <- c("mean","sd")
+table.sum5
+
+```
+
+```{r}
+# Polynomial kernel with bound-constraint svm classification
+train6<-array(0,c(3,4,4,4)) 
+cross6<-array(0,c(3,4,4,4)) 
+d<-c(2,3,4)
+sca<-c(0.01,0.1,1,10) 
+ofs<-c(0.01,0.1,1,10)
+c<-c(0.01,0.03,0.05,0.07)
+for(i in 1:3){
+  for(j in 1:4){ 
+    for(k in 1:4){
+    for(h in 1:4){
+      svm6<-ksvm(ytrain~.,data=xtrain,type="C-bsvc",kernel="polydot",kpar=list(degree=d[i],scale=sca[k],offset=ofs[h]),C=c[j],cross=10);
+      train6[i,j,k,h]<-error(svm6);
+      cross6[i,j,k,h]<-cross(svm6)
+     }
+    }
+  }
+}
+
+cross6
+```
+
+
+```{r}
+# cross validation error is smallest when d=2, c=1, scale=0.1, offset=1 
+svm.poly.bsvc.best<-ksvm(ytrain~.,data=xtrain,type="C-bsvc",kernel="polydot",kpar=list(degree=d[1],scale=sca[2],offset=ofs[3]),C=c[1]); 
+
+svm.poly.bsvc.best.predict <- predict(svm.poly.bsvc.best,newdata=xtest)
+(table <- table(svm.poly.bsvc.best.predict,ytest))
+
+accuracy.poly.3 <- matrix(NA,100)
+precision.poly.3 <- matrix(NA,100)
+recall.poly.3 <- matrix(NA,100)
+white6 <- matrix(NA,100)
+
+t2E1<-matrix(NA,100)
+t2E2<-matrix(NA,100)
+t2E3<-matrix(NA,100)
+t2E4<-matrix(NA,100)
+
+for(i in 1:100){
+eli <-sample(1:length(ytest),50);
+xtest.sample <-xtest[-eli,];
+ytest.sampple <-ytest[-eli];
+pre2<-predict(svm.poly.nu.best,newdata=xtest.sample);
+tE<-table(pre2,ytest.sampple);
+t2E1[i]<-tE[1];
+t2E2[i]<-tE[2];
+t2E3[i]<-tE[3];
+t2E4[i]<-tE[4];
+accuracy.poly.3[i]<-(tE[1]+tE[4])/(tE[1]+tE[2]+tE[3]+tE[4]);
+precision.poly.3[i]<-tE[1]/(tE[1]+tE[2]);
+recall.poly.3[i]<-tE[1]/(tE[1]+tE[3]);
+white6[i] <- tE[4]/(tE[2]+tE[4])
+}
+
+mean.accuracy.poly.3 <- mean(accuracy.poly.3)
+sd.accuracy.poly.3 <- sd(accuracy.poly.3)
+mean.precision.poly.3 <- mean(precision.poly.3)
+sd.precision.poly.3 <- sd(precision.poly.3)
+mean.recall.poly.3 <- mean(recall.poly.3)
+sd.recall.poly.3 <-sd(recall.poly.3)
+mean.white.6 <- mean(white6)
+sd.white.6 <- sd(white6)
+
+table1 <- cbind(accuracy.poly.b=mean.accuracy.poly.3,precision.poly.b.red=mean.precision.poly.3,precision.poly.b.white=mean.white.6)
+table2 <- cbind(accuracy.poly.b=sd.accuracy.poly.3,precision.poly.b.red=sd.precision.poly.3,precision.poly.b.white=sd.white.6)
+table.sum6 <- rbind(table1,table2)
+rownames(table.sum4) <- c("mean","sd")
+table.sum6
+```
+
+
+```{r}
+# plot overall prediction accuracy
+ma<-c(mean.accuracy.gaussian.1,mean.accuracy.poly.1,mean.accuracy.gaussian.2,mean.accuracy.poly.2,mean.accuracy.gaussian.3,mean.accuracy.poly.3)
+sd<-c(sd.accuracy.gaussian.1,sd.accuracy.poly.1,sd.accuracy.gaussian.2,sd.accuracy.poly.2,sd.accuracy.gaussian.3,sd.accuracy.poly.3)
+
+plot(c(1:6),ma,pch=19, ylim=range(c(0.987,0.996)),xlab="Methods", ylab="Mean +/- SD",
+col=c(2,4,2,4,2,4),main="Accuracy with std.dev error bars")
+
+arrows(c(1:6), ma-sd, c(1:6), ma+sd, length=0.05, angle=90, code=3)
+legend("bottomright", c("Gauss", "Poly"), col = c(2,4),pch = 19,cex=0.8)
+text(1.5,mean.accuracy.gaussian.1-0.1*sd.accuracy.gaussian.1,"C-SVC",cex=0.8)
+text(3.5,mean.accuracy.gaussian.2-3*sd.accuracy.gaussian.2,"nu-SVC",cex=0.8)
+text(5.5,mean.accuracy.poly.3-3*sd.accuracy.poly.3,"C-bSVC",cex=0.8)
+
+# plot red wine prediction accuracy
+mp1<-c(mean.precision.gaussian.1,mean.precision.poly.1,mean.precision.gaussian.2,mean.precision.poly.2,mean.precision.gaussian.3,mean.precision.poly.3)
+sp1<-c(sd.precision.gaussian.1,sd.precision.poly.1,sd.precision.gaussian.2,sd.precision.poly.2,sd.precision.gaussian.3,sd.precision.poly.3)
+
+plot(c(1:6),mp1,pch=19,ylim=range(c(mp1+sp1, mp1-sp1)),xlab="Methods", ylab="Mean +/- SD",
+col=c(2,4,2,4,2,4),main="precision of red with std.dev error bars")
+arrows(c(1:6), mp1-sp1, c(1:6), mp1+sp1, length=0.05, angle=90, code=3)
+legend("bottomright", c("Gauss", "Poly"), col = c(2,4), pch = 19,cex=0.8)
+text(1.5,mean.precision.gaussian.1-0.1*sd.precision.gaussian.1,"C-SVC",cex=0.8)
+text(3.5,mean.precision.poly.2-2*sd.precision.gaussian.2,"nu-SVC",cex=0.8)
+text(5.5,mean.precision.poly.3-2*sd.precision.poly.3,"C-bSVC",cex=0.8)
+
+# plot white wine prediction accuracy
+mp2<-c(mean.white.1,mean.white.2,mean.white.3,mean.white.4,mean.white.5,mean.white.6)
+sp2<-c(sd.white.1,sd.white.2,sd.white.3,sd.white.4,sd.white.5,sd.white.6)
+plot(c(1:6),mp2,pch=19,ylim=range(c(mp2-sp2, mp2+sp2)),xlab="Methods", ylab="Mean +/- SD",
+col=c(2,4,2,4,2,4),main="precision of white with std.dev error bars")
+arrows(c(1:6), mp2-sp2, c(1:6), mp2+sp2, length=0.05, angle=90, code=3)
+legend("bottomright", c("Gauss", "Poly"), col = c(2,4), pch = 19,cex=0.8)
+text(1.5,mean.accuracy.gaussian.1-0.1*sd.accuracy.gaussian.1,"C-SVC",cex=0.8)
+text(3.5,mean.accuracy.poly.2-3*sd.accuracy.gaussian.2,"nu-SVC",cex=0.8)
+text(5.5,mean.accuracy.poly.3-3*sd.accuracy.poly.3,"C-bSVC",cex=0.8)
+```
+
+```{r}
+# 1. decision tree
+library(rpart)
+library(rpart.plot)
+set.seed(235)
+wine_tree <- rpart(ytrain~.,data=xtrain,control=rpart.control(cp=0,minsplit=20,xval=10, maxsurrogate=0))
+print(wine_tree)
+rpart.plot(wine_tree)
+
+plotcp(wine_tree,minline=TRUE,col=4)
+printcp(wine_tree)
+num<- which.min(wine_tree$cptable[,4])
+min_cp<- wine_tree$cptable[num,1]
+minimum_xerror <- wine_tree$cptable[num,4]
+cbind(num=num,min_cp=min_cp,minimum_xerror = minimum_xerror)
+
+train_model<-rpart(ytrain~.,data=xtrain,control=rpart.control(cp=min_cp,minsplit=20,maxsurrogate=0))
+rpart.plot(train_model)
+
+accuracy.tree <- matrix(NA,100)
+precision.red.tree <- matrix(NA,100)
+precision.white.tree  <- matrix(NA,100)
+
+t2E1<-matrix(NA,100)
+t2E2<-matrix(NA,100)
+t2E3<-matrix(NA,100)
+t2E4<-matrix(NA,100)
+
+for(i in 1:100){
+eli <-sample(1:length(ytest),50);
+xtest.sample <-xtest[-eli,];
+ytest.sampple <-ytest[-eli];
+pre2<-predict(train_model,newdata=xtest.sample,type="class");
+tE<-table(pre2,ytest.sampple);
+t2E1[i]<-tE[1];
+t2E2[i]<-tE[2];
+t2E3[i]<-tE[3];
+t2E4[i]<-tE[4];
+accuracy.tree[i]<-(tE[1]+tE[4])/(tE[1]+tE[2]+tE[3]+tE[4]);
+precision.red.tree[i]<-tE[1]/(tE[1]+tE[2]);
+precision.white.tree[i] <- tE[4]/(tE[2]+tE[4])
+}
+
+m9a <- mean(accuracy.tree)
+s9a <- sd(accuracy.tree)
+m9p1 <- mean(precision.red.tree)
+s9p1 <- sd(precision.red.tree)
+m9p2 <- mean(precision.white.tree)
+s9p2 <-sd(precision.white.tree)
+
+table1 <- cbind(accuracy.tree=m9a,precision.red.tree=m9p1,precision.white.tree=m9p2)
+table2 <- cbind(accuracy.tree=s9a,precision.red.tree=s9p1,precision.white.tree=s9p2)
+table.sum7 <- rbind(table1,table2)
+rownames(table.sum7) <- c("mean","sd")
+table.sum7
+```
+
+```{r}
+# 2. fisher discriminant analysis
+library(MASS)
+discrAnaly<-lda(ytrain~ ., data=xtrain, prior = c(1,1)/2)
+pre.fisher<-predict(discrAnaly,newdata=xtest);
+(tE<-table(predicted=pre.fisher$class,ytest))
+
+accuracy10<-matrix(0,100)
+precision101<-matrix(0,100)
+precision102<-matrix(0,100)
+t10E1<-matrix(0,100)
+t10E2<-matrix(0,100)
+t10E3<-matrix(0,100)
+t10E4<-matrix(0,100)
+
+set.seed(125)
+for(i in 1:100){
+eli<-sample(1:length(ytest),50);
+xtest.sample<-xtest[-eli,];
+ytest.sample<-ytest[-eli];
+pre10<-predict(discrAnaly,newdata=xtest.sample);
+tE<-table(predicted=pre10$class,ytest.sample);
+t10E1[i]<-tE[1];
+t10E2[i]<-tE[2];
+t10E3[i]<-tE[3];
+t10E4[i]<-tE[4];
+accuracy10[i]<-(tE[1]+tE[4])/(tE[1]+tE[2]+tE[3]+tE[4]);
+precision101[i]<-tE[1]/(tE[1]+tE[2]);
+precision102[i]<-tE[4]/(tE[2]+tE[4])
+}
+
+m10a<-mean(accuracy10)
+s10a<-sd(accuracy10)
+m10p1<-mean(precision101)
+s10p1<-sd(precision101)
+m10p2<-mean(precision102)
+s10p2<-sd(precision102)
+
+table1 <- cbind(accuracy.fisher=m10a,precision.red.fisher=m10p1,precision.white.fisher=m10p2)
+table2 <- cbind(accuracy.fisher=s10a,precision.red.fisher=s10p1,precision.white.fisher=s10p2)
+table.sum8 <- rbind(table1,table2)
+rownames(table.sum8) <- c("mean","sd")
+table.sum8
+```
+
+
+
+```{r}
+# 3. logistic regression
+library(caret)
+cut<-c(0.44,0.46,0.48,0.5,0.52,0.54,0.56,0.58)
+overall_accuracy <- matrix(NA,8,1)
+for (i in 1:8){
+logistic <- glm(ytrain~., data=xtrain,family="binomial")
+preL <- ifelse(predict(logistic,newdata=xtest,type="response")> cut[i],1,0)
+accuracy <- table(ytest,preL)
+overall_accuracy[i] <- sum(diag(accuracy)/sum(accuracy))
+}
+
+# according to the overall accuracy the optimal cut-off point is 0.48
+logis<-glm(ytrain~.,data=xtrain,family="binomial")
+pre11<-as.numeric(predict(logis,xtest,type="response")>cut[3])
+
+accuracy11<-matrix(0,100)
+precision111<-matrix(0,100)
+precision112<-matrix(0,100)
+t11E1<-matrix(0,100)
+t11E2<-matrix(0,100)
+t11E3<-matrix(0,100)
+t11E4<-matrix(0,100)
+
+for(i in 1:100){
+eli<-sample(1:length(ytest),50);
+xtest.sample<-xtest[-eli,];
+ytest.sample<-ytest[-eli];
+tE<-table(pre11[-eli],ytest.sample);
+t11E1[i]<-tE[1];
+t11E2[i]<-tE[2];
+t11E3[i]<-tE[3];
+t11E4[i]<-tE[4];
+accuracy11[i]<-(tE[1]+tE[4])/(tE[1]+tE[2]+tE[3]+tE[4]);
+precision111[i]<-tE[1]/(tE[1]+tE[2]);
+precision112[i]<-tE[4]/(tE[2]+tE[4])
+}
+m11a<-mean(accuracy11)
+s11a<-sd(accuracy11)
+m11p1<-mean(precision111)
+s11p1<-sd(precision111)
+m11p2<-mean(precision112)
+s11p2<-sd(precision112)
+
+table1 <- cbind(accuracy.logistics=m11a,precision.red.logistics=m11p1,precision.white.logistics=m11p2)
+table2 <- cbind(accuracy.logistics=s11a,precision.red.logistics=s11p1,precision.white.logistics=s11p2)
+table.sum9 <- rbind(table1,table2)
+rownames(table.sum9) <- c("mean","sd")
+table.sum9
+```
+
+
+
+```{r}
+maB<-c(mean.accuracy.gaussian.2,m9a,m10a,m11a)
+saB<-c(sd.accuracy.gaussian.2,s9a,s10a,s11a)
+plot(c(1:4),maB,pch=19,ylim=range(c(maB-saB, maB+saB)),xlab="Methods", ylab="Mean +/- SD",
+col=c(6,3,5,4),main="Accuracy with std.dev error bars")
+arrows(c(1:4), maB-saB, c(1:4), maB+saB, length=0.05, angle=90, code=3)
+text(1.2,mean.accuracy.gaussian.2-0.1*sd.accuracy.gaussian.2,"SVM",cex=0.8)
+text(2.3,m9a-0.1*s9a,"Decision tree",cex=0.8)
+text(3.2,m10a-2*s10a,"FDA",cex=0.8)
+text(3.8,m11a-2*s11a,"Logistic",cex=0.8)
+
+mp1B<-c(mean.precision.gaussian.2,m9p1,m10p1,m11p1)
+sp1B<-c(sd.precision.gaussian.2,s9p1,s10p1,s11p1)
+plot(c(1:4),mp1B,pch=19,ylim=range(c(mp1B-sp1B, mp1B+sp1B)),xlab="Methods", ylab="Mean +/- SD",
+col=c(6,3,5,4),main="precision of red with std.dev error bars")
+arrows(c(1:4), mp1B-sp1B, c(1:4), mp1B+sp1B, length=0.05, angle=90, code=3)
+text(1.2,mean.precision.gaussian.2-0.1*sd.precision.gaussian.2,"SVM",cex=0.8)
+text(2.3,m9p1-0.1*s9p1,"Decision tree",cex=0.8)
+text(3.2,m10p1-2*s10p1,"FDA",cex=0.8)
+text(3.8,m11p1-2*s11p1,"Logistic",cex=0.8)
+
+mp2B<-c(mean.white.3,m9p2,m10p2,m11p2)
+sp2B<-c(sd.white.3,s9p2,s10p2,s11p2)
+plot(c(1:4),mp2B,pch=19,ylim=range(c(mp2B-sp2B, mp2B+sp2B)),xlab="Methods", ylab="Mean +/- SD",
+col=c(6,3,5,4),main="precision of white with std.dev error bars")
+arrows(c(1:4), mp2B-sp2B, c(1:4), mp2B+sp2B, length=0.05, angle=90, code=3)
+text(1.2,mean.white.3-0.1*sd.white.3,"SVM",cex=0.8)
+text(2.3,m9p2-0.1*s9p2,"Decision tree",cex=0.8)
+text(3.2,m10p2-2*s10p2,"FDA",cex=0.8)
+text(3.8,m11p2-2*s11p2,"Logistic",cex=0.8)
+
+```
+
+```{r}
+union.wine.taste <- cbind(union_wine,taste=rep(1,nrow(union_wine)))
+union.wine.taste[,12]<-as.numeric(levels(union.wine.taste[,12])[union.wine.taste[,12]])
+union.wine.taste$taste <- ifelse(union.wine.taste$quality < 6, 'bad', 'good')
+union.wine.taste$taste[union.wine.taste$quality == 6] <- 'normal'
+union.wine.taste$taste <- as.factor(union.wine.taste$taste)
+
+table(union.wine.taste$taste)
+
+train_ind_new <- sample(nrow(union.wine.taste),size=floor(0.632*nrow(white.wine)))
+train_new <- union.wine.taste[train_ind_new,]
+test_new <- union.wine.taste[-train_ind_new,]
+
+xtrain.new <- train_new[,1:11]
+ytrain.new <- train_new[,14]
+xtest.new <- test_new[,1:11]
+ytest.new <- test_new[,14]
+
+library(caret)
+# grid Search
+# mtry: Number of variables randomly sampled as candidates at each split.
+# ntree: Number of trees to grow.
+# control <- trainControl(method="repeatedcv", number=10, repeats=3, search="grid")
+# set.seed(123)
+# tunegrid <- expand.grid(.mtry=c(1:3))
+# rf_random <- train(ytrain.new~., data=xtrain.new, method="rf", metric="Accuracy", tuneLength=5, trControl=control)
+# print(rf_random)
+# plot(rf_random)
+
+# apply tuneRF() function to search for optimal mtry values with the given data.
+library(randomForest)
+library(nnet)
+set.seed(123)
+# mtry: Number of variables randomly sampled as candidates at each split.
+# ntree: Number of trees to grow.
+bestmtry <- tuneRF(xtrain.new, ytrain.new, stepFactor=1.5, improve=1e-5, ntree=500)
+print(bestmtry)
+
+?tuneRF
+set.seed(123)
+model <- randomForest(ytrain.new~., mtry=2, ntree=500, data = xtrain.new)
+pred <- predict(model, newdata = xtest.new)
+table(pred, ytest.new)
+
+library(MLmetrics)
+pred <- predict(model, newdata = xtest.new,type="prob")
+(log.loss.forest<- MultiLogLoss(y_pred=pred, y_true=ytest.new))
+
+wine.multinom <- multinom(ytrain.new~., data = xtrain.new)
+summary(wine.multinom)
+pred2 <- predict(wine.multinom, newdata = xtest.new,type="class")
+table(pred2, ytest.new)
+
+library(MLmetrics)
+pred2 <- predict(wine.multinom, newdata = xtest.new,type="probs")
+(log.loss.multi <- MultiLogLoss(y_pred=pred2, y_true=ytest.new))
+
+cbind(log.loss.forest=log.loss.forest,log.loss.multi=log.loss.multi)
+```
+
+
