@@ -1,0 +1,114 @@
+---
+title: "DM_assign1"
+author: "Weijie Gao"
+date: "5 March 2017"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r}
+dataPath <- "~/Documents/Chicago2016/Spring/Data Mining/week2"
+GermanCredit <- read.table(file=paste(dataPath,"Germancredit_numertic.csv",sep="/"),header=TRUE)
+head(GermanCredit)
+
+# fit linear regression with all variables
+full.model <- lm(GermanCredit$Credit_Amount~.,data=GermanCredit)
+(full.model.r.square <- summary(full.model)$r.squared)
+
+# fit linear regression with only intercept
+null.model <- lm(GermanCredit$Credit_Amount~1,data=GermanCredit)
+(null.model.r.square <- summary(null.model)$r.square)
+
+# perform add1 forward selection
+forwards <- step(null.model,trace=0,scope=list(lower=formula(null.model),upper=formula(full.model)),direction="forward")
+(step.forwards.r.square <- summary(forwards)$r.square)
+summary(forwards)
+
+# Choose variables: Duration,Installment_rate,Job,Telephone,Property,Age,Class,
+# Foreign_worker,Savings_Account,Employment and Num_existingcredit.
+
+# which(colnames(GermanCredit)=="Age")
+# which(colnames(GermanCredit)=="Credit_Amount")
+
+# subtract the selected variables
+GermanCredit <- GermanCredit[,c(2,5,6,7,8,12,13,16,17,19,20,21)]
+
+# split the sample randomly into training-test using a 632:368 ratio, and compute r square
+# in training and holdout. Run the process 1000 times and save the results.
+rsquare_train <- matrix(NA,1000)
+rsquare_test <- matrix(NA,1000)
+coefficients <- matrix(NA,12,1000)
+
+for (i in 1:1000){
+  train_ind <- sample(nrow(GermanCredit), size = 0.632 * nrow(GermanCredit))
+  train <- GermanCredit[train_ind, ]
+  test <- GermanCredit[-train_ind, ]
+  fit.lm <- lm(train$Credit_Amount~.,data=train)
+  coefficients[,i] <- coef(fit.lm)
+  rsquare_train[i] <- summary(fit.lm)$r.squared
+  predited.value <- predict(fit.lm,newdata=test,type="response")
+  rsquare_test[i] <- cor(test$Credit_Amount,predited.value)^2
+}
+
+# compute the mean of all 1000 coefficients (for each beta)
+coef.mean <- apply(coefficients,1,mean)
+
+# compute the standard deviation of all 1000 coefficients
+coef.sd <- apply(coefficients,1,sd)
+
+# plot the distributions of first six coefficients
+trans <- t(coefficients)
+matplot(trans[,c(1:6)],type='l',lty=1,xlab="number of times",ylab="coefficeints",col=c("black","red","blue","green","cyan","orange"))
+legend("topright",legend=c("B0","B1","B2","B3","B4","B5"),lty=1,lwd=2,cex=.7,col=c("black","red","blue","green","cyan","orange"))
+
+
+matplot(trans[,c(7:12)],type='l',lty=1,xlab="number of times",ylab="coefficeints",col=c(1:6))
+legend("topright",legend=c("B6","B7","B8","B9","B10","B11"),lty=1,lwd=2,cex=.7,col=c(1:6))
+```
+
+#### From the plot of all 12 coefficients, we could see that the change of B1 to B6 is much smaller than the change of other coefficients. Specifically, the range of intercept, Class and Foreign worker are among the widest, then comes the coefficients of Telephone, Job and Num_existingcredit. The coefficients of Duration, Savings_Account, Employment, Installment_rate, Property and Age have the least variation.
+
+```{r}
+# plot the distribution of houldout R^2
+plot(1:nrow(rsquare_test),rsquare_test,type='l',ylab="Holdout R square")
+
+# plot the distribution of % fall in R^2
+plot(1:nrow(rsquare_test),(rsquare_train-rsquare_test)/rsquare_train,type='l',ylab="% fall in R square")
+```
+
+#### The above graphes show that the changes of R square range from 0.45 to 0.65, and the percentage fall range from -0.3 to 0.3.
+```{r}
+# build linear model using entire sample
+fit.lm.entire <- lm(GermanCredit$Credit_Amount~.,data=GermanCredit)
+fit.lm.entire$coefficients
+
+# sort each coefficient's 1000 values
+head(apply(trans, 2, sort))
+
+# Compute 2.5%-97.5% confidence interval 
+# since (1-0.025)100%CI is mean +- z(0.025/2)*sigma/sqrt(n)
+# hence 97.5%CI is mean +- z(0.0125)*sigma/sqrt(n)
+
+conf <- matrix(NA,12,2)
+for (i in 1:12){
+    conf[i,] <- cbind(coef.mean[i]-qnorm(0.9875)*(coef.sd[i]/sqrt(10)),coef.mean[i]+qnorm(0.9875)*(coef.sd[i]/sqrt(10)))
+}
+colnames(conf) <- c("2.5%","97.5%")
+
+# scale these CI's down by a factor of 0.632^0.5=0.795
+scaled.2.5 <- coef.mean-0.795*(coef.mean-conf[,1])
+scaled.97.5 <- coef.mean+0.795*(conf[,2]-coef.mean)
+
+scaled.CI <- cbind(scaled2.5=scaled.2.5,scaled.97.5=scaled.97.5)
+scaled.CI
+
+# compute single model's CIs
+single.model.CI <- confint(fit.lm.entire,fit.lm.entire$coefficients[1],level=0.95)
+single.model.CI
+
+rownames(scaled.CI) <- rownames(single.model.CI)
+cbind(scaled.CI=scaled.CI,single.model.CI=single.model.CI)
+```
+
+#### According to the above table, the confidence interval of average value across 1000 is tighter than the single model's CIs, especially for the coefficients with large variation such as intercept, Class and foreigh worker. For coefficients such as Duration, Installment_rate, Property and Age, the two confidence intervals are close, and the confidence interval of average value for these coefficients are quite tight. Hence we could notice that by repeating the model construction process multiple times help improve the stability and accuracy of our model and this idea may be further applied to other data mining algorithms.
