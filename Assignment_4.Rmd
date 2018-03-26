@@ -1,0 +1,165 @@
+---
+title: "Assignment4"
+author: "Weijie Gao"
+date: "18 February 2017"
+output:
+  word_document: default
+  html_document: default
+---
+### Part 1
+```{r}
+dataPath <- "~/Documents/Chicago2016/Spring/Data Mining/week2"
+GermanCredit <- read.table(paste(dataPath,"Germancredit_numertic.csv",sep='/'),header=TRUE)
+smp_size <- floor(0.7 * nrow(GermanCredit))
+set.seed(234)
+
+# represent the good credit as 1, and bad as 0.
+GermanCredit$Class <-ifelse(GermanCredit$Class==1,1,0)
+
+# seperate the data into training and test set
+train_ind <- sample(nrow(GermanCredit), size = smp_size)
+GermanCredit.logit.train <- GermanCredit[train_ind, ]
+GermanCredit.logit.test <- GermanCredit[-train_ind, ]
+
+
+# ensure the results are repeatable
+set.seed(7)
+
+# load the library
+library(mlbench)
+library(caret)
+require(randomForest)
+
+# apply random forest to select the "main-effects"
+fit <- randomForest(factor(GermanCredit.logit.train$Class)~., data=GermanCredit.logit.train)
+varImp(fit)
+
+# define the control using a random forest selection function
+control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+
+# run the RFE algorithm
+results <- rfe(GermanCredit.logit.train[,1:20], GermanCredit.logit.train[,21], sizes=c(1:20), rfeControl=control)
+
+# summarize the results
+print(results)
+
+# list the chosen features
+predictors(results)
+
+# plot the results
+plot(results, type=c("g", "o"))
+
+best_model.1 <- glm(GermanCredit.logit.train$Class ~ Status+Duration+Credit_history+Purpose+ Credit_Amount+Savings_Account+Employment+Installment_rate+Status_Sex+Other_guarantors,
+           family=binomial(link='logit'),data=GermanCredit.logit.train)
+summary(best_model.1)
+best_model.1$aic
+```
+
+#### From the graph we could see that the model does not improve significantly after including 10 variables, therefore we build the model with the top 10 important variables:Status, Duration, Credit_history, Purpose, Credit_Amount, Savings_Account, Employment, Installment_rate, Status_Sex and Other_guarantors, and the returned AIC value is 727.9694.
+
+```{r}
+set.seed(123)
+# perform Add1 to select important features
+full.model <- glm(GermanCredit.logit.train$Class~.,family=binomial(link='logit'),data=GermanCredit.logit.train)
+full.model.aic <- full.model$aic
+
+null.model <- glm(GermanCredit.logit.train$Class~1,family=binomial(link='logit'),data=GermanCredit.logit.train)
+null.model.aic <- null.model$aic
+
+# perform forward selection
+forwards <- step(null.model,trace=0,scope=list(lower=formula(null.model),upper=formula(full.model)),direction="forward")
+step.forwards.aic <- forwards$aic
+
+# perform backward elimination on the same data set 
+backwards <- step(full.model, data=GermanCredit.logit.train, direction="backward")
+step.backwards.aic <- backwards$aic
+
+best_model <- forwards 
+summary(best_model)
+best_model$aic
+```
+
+#### According to both of the forward and backward selection, the best model is the one that includes 14 variables that are Status, Duration, Credit_history, Savings_Account, Installment_rate, Credit_Amount, Foreign_worker, Employment, Other_installment, Status_Sex, Other_guarantors, Housing, Property and Telephone. And the lowest AIC is 690.0126. Since we want to choose the model with the lowest AIC we will select the model using forward step function for further analysis.
+
+```{r}
+library(caret)
+fitted_values <- ifelse(best_model$fitted.values>0.5,'Good','Bad')
+GermanCredit.logit.train$Class <- ifelse(GermanCredit.logit.train$Class==1,'Good','Bad')
+confusionMatrix(GermanCredit.logit.train$Class,fitted_values)
+```
+
+#### From the result of confusion matrix, it could be seen that the overall prediction accuracy is 0.7486 with Sensitivity equals to 0.6325, and the Specificity equals to 0.7846. This shows that the performance of our model is good, especiall the ability to correctly identify those good cases.
+
+```{r}
+# Perform holdout validation testing
+fitted.results <- predict(best_model,newdata=GermanCredit.logit.test,type='response')
+fitted.results <- ifelse(fitted.results > 0.5,'Good','Bad')
+GermanCredit.logit.test$Class <- ifelse(GermanCredit.logit.test$Class==1,'Good','Bad')
+confusionMatrix(GermanCredit.logit.test$Class,fitted.results)
+
+```
+
+#### From the result of houldout validation, it could be seen that the overall prediction accuracy is 0.8 with Sensitivity equals to 0.6613, and the Specificity equals to 0.8361. This shows that the prediction performance and stability of our model is quite good. Although the sensitivity is still comparatively low, the specificity is quite high, indicating the relatively strong ability to correctly identify those good ones.
+
+```{r}
+suppressWarnings(library(ROCR))
+fitted.results <- predict(best_model,newdata=GermanCredit.logit.test,type='response')
+pr <- prediction(fitted.results, GermanCredit.logit.test$Class)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+
+#### From the roc curve and value of AUC, we could verify that our model has a relavtively good prediction performance.
+
+```{r}
+# install.packages("rattle")
+# library(rattle)
+library(rpart)
+library(rpart.plot)
+
+GermanCredit$Class <-ifelse(GermanCredit$Class==1,"Good","Bad")
+
+# seperate the data into training and test set
+GermanCredit.train <- GermanCredit[train_ind, ]
+GermanCredit.test <- GermanCredit[-train_ind, ]
+
+set.seed(235)
+Credit_tree <- rpart(GermanCredit.train$Class~.,data=GermanCredit.train,control=rpart.control(cp=0,minsplit=30,xval=10, maxsurrogate=0))
+print(Credit_tree)
+rpart.plot(Credit_tree)
+
+plotcp(Credit_tree,minline=TRUE,col=4)
+printcp(Credit_tree)
+num<- which.min(Credit_tree$cptable[,4])
+min_cp<- Credit_tree$cptable[num,1]
+minimum_xerror <- Credit_tree$cptable[num,4]
+cbind(num=num,min_cp=min_cp,minimum_xerror = minimum_xerror)
+```
+
+#### In this process of tuning the parameter, we could know that the optimal cp is 0.01515152 with the minimum cross validation error equal to 0.7818182, hence for further analysis we would assign the value of cp equal to 0.01515152.
+
+```{r}
+train_model<-rpart(GermanCredit.train$Class~.,data=GermanCredit.train,control=rpart.control(cp=min_cp))
+# train_model<-rpart(GermanCredit.train,control=rpart.control(cp=min_cp))
+print(train_model)
+# prp(train_model)
+# fancyRpartPlot(train_model)
+
+# generate confusion matrix for training data
+confusionMatrix(GermanCredit.train$Class,predict(train_model,type="class"))
+
+rpart.plot(train_model)
+```
+
+#### It seems to have 4 interactions since the pruned tree has total four layers. And for each node, it shows the predicted class (good or bad), the predicted probability of good and the percentage of observations in the node. Hence for this pruned tree, if the status of existing checking account is larger than 2.5 DM then we have 85% probability that this customer has good credit. And if the status of existing checking account is less than 2.5 with a duration longer than 22 months and credit history larger than 2.5, then we have 69% probability that this customer has good credit, otherwise, if the credit history is less than 2.5, then we have 25% probability that this customer has bad credit. In the other case, if the customer's status of existing checking account is less than 2.5 with a duration less than 22 months but saving account larger than 4.5 (>=1000 DM) then we has 73% probability that the customer has a good credit. And if the saving account is less than 4.5 (less than 1000 DM) with a installment rate greater than 2.5, and the main purpose is mostly for domestic appliances, repairs, education, business, then we have 87% probability that the customer has a good credit. But if the main purpose is mostly for buying cars, we have 34% probability that the customer has a bad credit. Also if the saving account is less than 4.5 (less than 1000 DM), and the installment rate is less than 2.5, then we has 29% probability that the customer has a bad credit.
+
+```{r}
+# perform holdout validation test
+confusionMatrix(GermanCredit.test$Class,predict(train_model,newdata=GermanCredit.test[,-21],type="class"))
+```
+
+#### From this result, we could see that the overall accuracy is 0.7633, slightly lower than the logistic regression, with Sensitivity equals to 0.5763 and Specificity equals to 0.8091. Also, it shows a good ability to predict the good class, but the ability to predict bad class is comparatively lower, with only 0.5763. And it seems that the performance of tree model is not as good as the logistic regression, but the interpretation of tree model is more straintforward than logistic regression.
