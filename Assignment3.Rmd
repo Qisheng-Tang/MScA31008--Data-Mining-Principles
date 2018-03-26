@@ -1,0 +1,285 @@
+---
+title: "Assignment3"
+author: "Weijie Gao"
+date: "5 February 2017"
+output:
+  word_document: default
+  html_document: default
+---
+### Assignment 3 Part 1
+```{r}
+dataPath <- "~/Documents/Chicago2016/Winter/Data Mining/week2"
+# Germandata <- read.table(paste(dataPath,"german.data.csv",sep='/'),header=FALSE)
+
+# Translate raw data into numerical for further analysis
+# colnames(Germandata) <- c("Status","Duration","Credit_history","Purpose","Credit_Amount",
+#                            "Savings_Account","Employment","Installment_rate","Status_Sex",
+#                            "Other_guarantors","Present_residence","Property","Age","Other_installment","Housing",
+#                            "Num_existingcredit","Job","Num_maintenance","Telephone","Foreign_worker","Class")
+# 
+# Germandata$Status<- as.numeric(factor(Germandata$Status,levels=c("A11","A12", "A13","A14")))
+# Germandata$Credit_history <- as.numeric(factor(Germandata$Credit_history,levels=c("A30","A31","A32","A33","A34")))
+# Germandata$Purpose <- as.numeric(factor(Germandata$Purpose,levels=c("A40","A41", "A42","A43","A44","A45","A46","A47","A48","A49","A410")))
+# Germandata$Savings_Account <- as.numeric(factor(Germandata$Savings_Account,levels=c("A61","A62","A63","A64","A65")))
+# Germandata$Employment <- as.numeric(factor(Germandata$Employment,levels=c("A71","A72","A73","A74","A75")))
+# Germandata$Status_Sex <- as.numeric(factor(Germandata$Status_Sex,levels=c("A91","A92","A93","A94","A95")))
+# Germandata$Other_guarantors <- as.numeric(factor(Germandata$Other_guarantors,levels=c("A101","A102","A103")))    
+# Germandata$Property <- as.numeric(factor(Germandata$Property,levels=c("A121","A122","A123","A124")))
+# Germandata$Other_installment <- as.numeric(factor(Germandata$Other_installment,levels=c("A141","A142","A143")))
+# Germandata$Housing <- as.numeric(factor(Germandata$Housing,levels=c("A151","A152","A153")))
+# Germandata$Job <- as.numeric(factor(Germandata$Job,levels=c("A171","A172","A173","A174")))
+# Germandata$Telephone <- as.numeric(factor(Germandata$Telephone,levels=c("A191","A192")))
+# Germandata$Foreign_worker <- as.numeric(factor(Germandata$Foreign_worker,levels=c("A201","A202")))
+
+# Store the translated data as comma separated values format
+# write.table(Germandata, file = paste(dataPath,'Germancredit_numertic.csv',sep = '/'), row.names = F)
+
+# reload the translated data
+Germandata <- read.table(paste(dataPath,"Germancredit_numertic.csv",sep='/'),header=TRUE)
+
+# Separate data set into train and test data
+smp_size <- floor(0.632*nrow(Germandata))
+set.seed(123)
+train_ind <- sample(nrow(Germandata),size= smp_size)
+train_data <- Germandata[train_ind,]
+test_data <- Germandata[-train_ind,]
+
+# Choose qualitative variable Credit_history, Savings_Account, Employment and Status_Sex.
+Credit_history <- train_data$Credit_history
+Savings_Account <- train_data$Savings_Account
+Employment <-train_data$Employment
+Status_Sex <- train_data$Status_Sex
+
+# Install packages poLCA
+library(poLCA)
+
+# define function
+f1= cbind(Credit_history,Savings_Account,Employment,Status_Sex)~1
+
+# Estimate the model with 2 to 7 clusters and runs every model 100 times 
+# and return the corresponding AIC and BIC value.
+LCA_best_models<- function(data,formula,max.class=7){
+  ret<-NULL
+  min_aic<-100000
+  min_bic<-100000
+  clust_bic<-c()
+  clust_aic<-c()
+  for(i in 2:max.class){
+    for(j in 1:100){
+      res<-poLCA(formula,data,nclass=i,maxiter=1000,tol=.001,
+                 verbose=FALSE)
+      if(res$bic < min_bic){
+        min_bic<-res$bic
+        LCA_best_model_BIC<-res
+      }
+      if(res$aic < min_aic){
+        min_aic<-res$aic
+        LCA_best_model_AIC<-res
+      }
+    }
+    clust_bic<-rbind(clust_bic,c(i,res$bic))
+    clust_aic<-rbind(clust_aic,c(i,res$aic))
+  }
+  ret$LCA_best_model_BIC<-LCA_best_model_BIC
+  ret$min_bic<-min_bic
+  ret$LCA_best_model_AIC<-LCA_best_model_AIC
+  ret$min_aic<-min_aic
+  ret$clust_bic<-as.data.frame(clust_bic)
+  ret$clust_aic<-as.data.frame(clust_aic)
+  return(ret)
+}
+
+start.time <- Sys.time()
+LCAresults <- LCA_best_models(train_data,f1,7)
+end.time <- Sys.time()
+(time.taken <- end.time - start.time)
+
+(aic <- LCAresults$clust_aic)
+(bic <- LCAresults$clust_bic)
+
+# generate the scree plot
+plot(aic,type = "o")
+plot(aic,type = "o",xlab="Number of clusters",ylab="AIC&BIC value",col="red",ylim=c(6000,6700))
+points(bic,type="o")
+```
+
+#### The results above shows that AIC value reaches minimum when the number of cluster equals 3, while the BIC value is minimum when the number of cluster is 2. But from the generated scree plot, we could see that the difference between AIC and BIC is smallest when we choose two clusters. Hence, for the following analysis we will select two clusters.
+
+```{r}
+# fit the data with best trained model
+LCA_best_model <- poLCA(f1,train_data,nclass=2,nrep=100,tol=.001,verbose=FALSE,graphs=TRUE)
+
+# attributes(LCA_best_model)
+# LCA_best_model$npar
+# table(LCA_best_model$predclass)
+# LCA_best_model$posterior
+# LCA_best_model$aic
+
+# return the class-conditional probability from training set
+(probs_train <- LCA_best_model$probs)
+
+# perform holdout validation of trained LCA
+Credit_history <- test_data$Credit_history
+Savings_Account <- test_data$Savings_Account
+Employment <-test_data$Employment
+Status_Sex <- test_data$Status_Sex
+# define function
+f1= cbind(Credit_history,Savings_Account,Employment,Status_Sex)~1
+LCA_test_model <- poLCA(f1, test_data, nclass=2, tol=0.001, na.rm=FALSE, probs.start=probs_train, verbose=TRUE,graphs=TRUE)
+LCA_best_model$P
+LCA_test_model$P
+LCA_test_model$aic
+LCA_test_model$bic
+LCA_test_model$probs
+```
+
+#### From the outputs we could see that the value of AIC reduced to 3718 and the value of BIC reduced to 3839, showing that the performance of fitted model is comparatively good. But when comparing the returned cluster sizes for training data and test data, it could see that the performance of fitted model is not very stable. And from the results of item response probabilities, it could be seen that for class 1, the majority ones are females who have existing credit paid back duly, with savings account less than 100 DM and have 1 to 4 years. And for class 2, most of them are single males who do not have existing credits history in our bank, with savings account less than 100 DM but have more than 7 years employment.
+
+#### For last assignment, two numerical variables age and credit amount are selected to perform a k-overlapping means clustering and the results shows that young people with the lowest amount belong to cluster 1 and middle-age people with a comparatively highest amount belong to cluster 3 and the elder-age people with comparatively low amount belong to cluster 2. For latent class analysis, we choose four categorical variables Credit_history, Savings_Account,Employment and Status_Sex and group the data into two clusters. The objective of these two methods are the same, aiming to target the potential customers. And by combining these two results, we may considering pay more attention to elder single males who have a comparatively long employment but have no existing credits history in our bank.
+
+### Assignment 3 Part 2
+```{r}
+# install.packages("caret")
+data(GermanCredit,package="caret")
+
+# split sample into two random samples of sizes 70% and 30%
+smp_size_pca <- floor(0.7*nrow(GermanCredit))
+
+# seperate the data set into train and test data
+set.seed(123)
+train_ind <- sample(nrow(GermanCredit),size= smp_size_pca)
+train_pca <- GermanCredit[train_ind,]
+test_pca <- GermanCredit[-train_ind,]
+
+# choose the first seven variables from the data
+train_pca <- scale(train_pca[,1:7])
+test_pca <- scale(test_pca[,1:7])
+
+# perform principle component analysis on traing data
+German.credit.pca <- prcomp(train_pca,center = TRUE,scale. = TRUE)
+
+# return the corresponding importance of components
+summary(German.credit.pca)
+
+# proportion of variance explained for different component
+x.pvar <- (German.credit.pca$sdev^2)/sum(German.credit.pca$sdev^2)
+barplot(x.pvar,ylim=c(0,0.5),xlab="Components",ylab="proportion of variance")
+
+# cumulated varianced explained
+plot(cumsum(x.pvar),ylim=c(0,1), type='b',xlab="Number of components",ylab="cumulated varianced")
+
+# Generate the scree plot
+screeplot(German.credit.pca,type="l")
+```
+
+#### According to the cumulative proportion, more than 85 percent of the variance could be explained including 5 principle components, hence we choose to use the first five principle components.
+
+```{r}
+# generate the biplot of the first two components
+biplot(German.credit.pca,scale=0, cex=0.8)
+
+# generate the biplot using ggbiplot
+# install.packages("devtools")
+library(devtools)
+# install_github("ggbiplot","vqv")
+library(ggbiplot)
+g <- ggbiplot(German.credit.pca, obs.scale = 1, var.scale = 1, labels=row.names(USArrests),
+              ellipse = TRUE, circle = TRUE)
+g <- g + scale_color_discrete(name = '')
+g <- g + theme(legend.direction = 'horizontal', 
+               legend.position = 'top')
+print(g)
+
+# check the correlation between training data and first three factors
+cor((train_pca),German.credit.pca$x[,c(1:3)])
+```
+
+#### Both of these two types of biplot is not clear to see the results, hence we choose to check the correlation between training data and the first three factors, and the table above shows that first principle component places approximatedly equal weight on Duration and Amount,with much less weight on the rest five variables. Hence this component roughly corresponds to a measure of overall duration and amount. The second component places most of it weight on ResidenceDuration and age, hence this component roughly corresponds to the ResidenceDuration and age. And the third component places most of it weight on InstallmentRatePercentage, hence this component roughly corresponds to the level of installment rate. Overall, we see that the Amount, Residence Duration, Age, NumberExistingCredits and NumberPeopleMaintenance varaibales are located close to each other, and that the Duration and Installmentrate percentage is far from other five. This indicates hat the these variables are correlated with each other-people with high credit amount tend to had longer residence duration,elder age and large number of existing credits. Duration and Installmentrate percentage variable is less correlated with the other five.
+
+```{r}
+# Return the component loadings
+loadings <- German.credit.pca$rotation
+
+# Plot Component 1 loadings versus Component 2
+plot(German.credit.pca$rotation[,1],German.credit.pca$rotation[,2])
+text(German.credit.pca$rotation[,1],German.credit.pca$rotation[,2], row.names(German.credit.pca$rotation), cex=0.6, pos=4, col="red")
+
+# Plot Component 1 loadings versus Component 3
+plot(German.credit.pca$rotation[,1],German.credit.pca$rotation[,3])
+text(German.credit.pca$rotation[,1],German.credit.pca$rotation[,3], row.names(German.credit.pca$rotation), cex=0.6, pos=4, col="red")
+
+# Plot Component 1 loadings versus Component 4
+plot(German.credit.pca$rotation[,1],German.credit.pca$rotation[,4])
+text(German.credit.pca$rotation[,1],German.credit.pca$rotation[,4], row.names(German.credit.pca$rotation), cex=0.6, pos=4, col="red")
+
+# Plot Component 1 loadings versus Component 5
+plot(German.credit.pca$rotation[,1],German.credit.pca$rotation[,5])
+text(German.credit.pca$rotation[,1],German.credit.pca$rotation[,5], row.names(German.credit.pca$rotation), cex=0.6, pos=4, col="red")
+```
+
+#### The above four plots shows the relative weight for different variables in component 1 to 5. And we could notice that variable Amount and Duration has a comparatively high weight in component 1. And other weight of variables could also be seen from these plots.
+```{r}
+# Show that component score are orthogonal
+round(t(German.credit.pca$x)%*%(German.credit.pca$x),2)
+# Show that component loadings are orthogonal
+round(t(loadings)%*%(loadings),2)
+
+```
+
+#### The inner product of component score are diagonal matrix, showing that they are orthogonal. Similarly, the component loadings are orthogonal as well.
+
+```{r}
+# Perfrom holdout validation of principal components solution
+# predict the component score
+predicted.factor.score <- predict(German.credit.pca, newdata=test_pca)
+
+# matrix multiply the predicted component score from above with transpose of component loadings
+predicted.data <- predicted.factor.score%*%t(German.credit.pca$rotation)
+
+# compute the R square in the holdout sample
+# method 1: calculate r square based on defition
+(residuals.ss <- sum((test_pca-predicted.data)^2))
+y_bar <- mean(test_pca)
+total_ss <- sum((test_pca-y_bar)^2)
+r_square <-1-residuals.ss/total_ss
+r_square
+
+# method 2: calculate r square based on correlation
+cor(as.vector(test_pca),as.vector(predicted.data))^2
+```
+
+#### Both of these two methods shows that the R squares is quite close to 1, implying that the model fitted is good and stable.
+```{r}
+# return the vaf value of first 5 components
+total_variance <-(var(predicted.factor.score[,1])
+  +var(predicted.factor.score[,2])
+  +var(predicted.factor.score[,3])
+  +var(predicted.factor.score[,4])
+  +var(predicted.factor.score[,5])
+  +var(predicted.factor.score[,6])
+  +var(predicted.factor.score[,7]))
+
+components <- (var(predicted.factor.score[,6])
++var(predicted.factor.score[,7]))
+
+(vaf <- 1-components/total_variance)
+```
+
+#### The value of test data vaf also shows that five factor components should be selected.
+```{r}
+# Original component loadings
+German.credit.pca$rotation[,1:3]
+
+# Rotate the component loadings using varimax rotation
+rotated.components <- varimax(German.credit.pca$rotation[,1:3])
+rotated.components$loadings
+
+# Plot rotated loadings 1 versus rotated loadings 2 and 3.
+plot(rotated.components$loadings[,1],rotated.components$loadings[,2],xlab="Rotated Components 1",ylab="Rotated components 2")
+text(rotated.components$loadings[,1],rotated.components$loadings[,2], row.names(rotated.components$loadings), cex=0.6, pos=4, col="red")
+
+plot(rotated.components$loadings[,1],rotated.components$loadings[,3],xlab="Rotated Components 1",ylab="Rotated components 3")
+text(rotated.components$loadings[,1],rotated.components$loadings[,3], row.names(rotated.components$loadings), cex=0.6, pos=4, col="red")
+```
+
+#### The rotated component loadings show that the first principle component places high weight on Duration and Amount,but a higher weight on Duration and lower weight on Amount comparing to original loadings. The second component also places most of its weight on ResidenceDuration and age, but increase the weight of InstallmentRatePercentage varible and reduce the weight of NumberPeopleMaintenance variable. For the third component it also has the highest weight on InstallmentRatePercentage. By comparing to the original loadings, the weight of InstallmentRatePercentage increased to 0.775 but the weight of Duration decreased to 0.179. Generally speaking, the principle components does not reduce the data significantly but it does help to outline most of the useful data and make our analysis more efficient.
